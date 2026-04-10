@@ -28,18 +28,18 @@ pipeline {
     }
 
     stage("SonarQube Analysis") {
-      steps {
-        withSonarQubeEnv('SonarQube') {
-          sh '''
-            mvn sonar:sonar \
-            -Dsonar.projectKey=datastore \
-            -Dsonar.projectName=datastore \
-            -Dsonar.host.url=http://52.73.7.84:9000 \
-            -Dsonar.login=$SONAR_AUTH_TOKEN
-          '''
-        }
-      }
+  steps {
+    withSonarQubeEnv('SonarQube') {
+      sh '''
+        mvn clean verify sonar:sonar \
+        -Dsonar.projectKey=DataStore \
+        -Dsonar.projectName=DataStore \
+        -Dsonar.host.url=http://52.73.7.84:9000 \
+        -Dsonar.login=$SONAR_AUTH_TOKEN
+      '''
     }
+  }
+}
 
     stage("Maven Test") {
       steps {
