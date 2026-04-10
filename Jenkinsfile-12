@@ -6,7 +6,8 @@ pipeline {
   }
 
   environment {
-    DOCKERHUB_CREDENTIALS=credentials("dockerhub")
+    DOCKERHUB_CREDENTIALS = credentials("dockerhub")
+    SONAR_AUTH_TOKEN = credentials("sonar-token")
   }
 
   stages {
@@ -15,82 +16,101 @@ pipeline {
         checkout scmGit(branches: [[name: '*/master']], extensions: [], userRemoteConfigs: [[url: 'https://github.com/techdeepakkalal/DataStore.git']])
       }
     }
+
     stage("Maven Build") {
       steps {
-        sh """
+        sh '''
           echo "-------- Building Application --------"
           mvn clean package
           echo "------- Application Built Successfully --------"
-        """
+        '''
       }
     }
+
+    stage("SonarQube Analysis") {
+      steps {
+        withSonarQubeEnv('SonarQube') {
+          sh '''
+            mvn sonar:sonar \
+            -Dsonar.projectKey=datastore \
+            -Dsonar.projectName=datastore \
+            -Dsonar.host.url=http://52.73.7.84:9000 \
+            -Dsonar.login=$SONAR_AUTH_TOKEN
+          '''
+        }
+      }
+    }
+
     stage("Maven Test") {
       steps {
-        sh """
+        sh '''
           echo "-------- Executing Testcases --------"
           mvn test
           echo "-------- Testcases Execution Complete --------"
-        """
+        '''
       }
     }
+
     stage("Artifact Store") {
       steps {
-        sh """
+        sh '''
           echo "-------- Pushing Artifacts To S3 --------"
           aws s3 cp ./target/*.jar s3://datastore-bns--225279655140-us-east-1-an/
           echo "-------- Pushing Artifacts To S3 Completed --------"
-        """
+        '''
       }
     }
+
     stage("Docker Image Build") {
       steps {
-        sh """
+        sh '''
           echo "-------- Building Docker Image --------"
-          docker build -t datastore:"${App_Version}" .
+          docker build -t datastore:${App_Version} .
           echo "-------- Image Successfully Built --------"
-        """
+        '''
       }
     }
+
     stage("Docker Image Scan") {
       steps {
-        sh """
+        sh '''
           echo "-------- Scanning Docker Image --------"
-          trivy image datastore:"${App_Version}"
+          trivy image datastore:${App_Version}
           echo "-------- Scanning Docker Image Complete --------"
-        """
+        '''
       }
     }
+
     stage("Docker Image Tag") {
-      steps{
-        sh """
+      steps {
+        sh '''
           echo "-------- Tagging Docker Image --------"
-          docker tag datastore:"${App_Version}" deepakkalal/jenkins-datastore:"${App_Version}"
-          echo "-------- Tagging Docker Image Completed."
-        """
+          docker tag datastore:${App_Version} deepakkalal/jenkins-datastore:${App_Version}
+          echo "-------- Tagging Docker Image Completed --------"
+        '''
       }
     }
+
     stage("Loggingin & Pushing Docker Image") {
       steps {
-        sh """
+        sh '''
           echo "-------- Logging To DockerHub --------"
-          docker login -u $DOCKERHUB_CREDENTIALS_USR --password $DOCKERHUB_CREDENTIALS_PSW
-          echo "-------- DockerHub Login Successful --------"
+          docker login -u $DOCKERHUB_CREDENTIALS_USR -p $DOCKERHUB_CREDENTIALS_PSW
 
-          echo "-------- Pushing Docker Image To DockerHub --------"
-          docker push deepakkalal/jenkins-datastore:"${App_Version}"
-          echo "-------- Docker Image Pushed Successfully --------"
-        """
+          echo "-------- Pushing Docker Image --------"
+          docker push deepakkalal/jenkins-datastore:${App_Version}
+        '''
       }
     }
+
     stage("Cleanup") {
       steps {
-        sh """
-           echo "-------- Cleaning Up Jenkins Machine --------"
-           docker image prune -a -f
-           echo "-------- Clean Up Successful --------"
-        """
+        sh '''
+          docker image prune -a -f
+        '''
       }
     }
+
     stage("Deployment Acceptance") {
       steps {
         input 'Trigger Down Stream Job??'
